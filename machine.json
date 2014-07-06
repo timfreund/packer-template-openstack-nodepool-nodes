@@ -1,0 +1,109 @@
+{
+    "variables": {
+        "iso": "http://releases.ubuntu.com/12.04.4/ubuntu-12.04.4-server-amd64.iso",
+        "checksum": "e83adb9af4ec0a039e6a5c6e145a34de",
+        "version-number": "12.04",
+        "version-name": "precise",
+
+        "username": "packer",
+        "password": "packer",
+        "publickey": "",
+
+        "node-type": "devstack",
+        "openstack-infra-config-location": "../openstack-infra-config"
+    },
+    "builders": [
+        {
+            "type": "docker",
+            "image": "ubuntu:{{user `version-number` }}",
+            "export_path": "output/nodepool-{{user `node-type` }}-docker.tar"
+        },
+        {
+            "type": "virtualbox-iso",
+            "guest_os_type": "Ubuntu_64",
+            "iso_url": "{{user `iso` }}",
+            "iso_checksum": "{{ user `checksum` }}",
+            "iso_checksum_type": "md5",
+            "output_directory": "output/nodepool-{{user `node-type` }}-vbox",
+            "http_directory": "httpdir",
+            "http_port_min": 10082,
+            "http_port_max": 10089,
+            "ssh_host_port_min": 2222,
+            "ssh_host_port_max": 2229,
+            "ssh_username": "{{user `username`}}",
+            "ssh_password": "{{user `password`}}",
+            "ssh_wait_timeout": "90m",
+            "shutdown_command": "sudo shutdown -P now",
+            "boot_command":
+            [
+                "<esc><esc><enter><wait>",
+                "/install/vmlinuz noapic preseed/url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/preseed.cfg ",
+                "debian-installer=en_US auto locale=en_US kbd-chooser/method=us ",
+                "hostname=example ",
+                "fb=false debconf/frontend=noninteractive ",
+                "keyboard-configuration/modelcode=SKIP keyboard-configuration/layout=USA keyboard-configuration/variant=USA console-setup/ask_detect=false ",
+                "initrd=/install/initrd.gz -- <enter>"
+            ]
+        },
+        {
+            "type": "qemu",
+            "iso_url": "{{user `iso` }}",
+            "iso_checksum": "{{user `checksum` }}",
+            "iso_checksum_type": "md5",
+            "output_directory": "output/nodepool-{{user `node-type` }}-kvm",
+            "ssh_wait_timeout": "30s",
+            "shutdown_command": "sudo shutdown -P now",
+            "disk_size": 12000,
+            "format": "qcow2",
+            "headless": true,
+            "accelerator": "kvm",
+            "http_directory": "httpdir",
+            "http_port_min": 10082,
+            "http_port_max": 10089,
+            "ssh_host_port_min": 2222,
+            "ssh_host_port_max": 2229,
+            "ssh_username": "{{user `username`}}",
+            "ssh_password": "{{user `password`}}",
+            "ssh_port": 22,
+            "ssh_wait_timeout": "90m",
+            "vm_name": "nodepool-{{user `node-type` }}",
+            "net_device": "virtio-net",
+            "disk_interface": "virtio",
+            "boot_command":
+            [
+                "<esc><esc><enter><wait>",
+                "/install/vmlinuz noapic preseed/url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/preseed.cfg ",
+                "debian-installer=en_US auto locale=en_US kbd-chooser/method=us ",
+                "hostname=example ",
+                "fb=false debconf/frontend=noninteractive ",
+                "keyboard-configuration/modelcode=SKIP keyboard-configuration/layout=USA keyboard-configuration/variant=USA console-setup/ask_detect=false ",
+                "initrd=/install/initrd.gz -- <enter>"
+            ]
+        }
+    ],
+    "provisioners": [
+        {
+            "type": "file",
+            "source": "{{user `openstack-infra-config-location` }}/modules/openstack_project/files/nodepool/scripts",
+            "destination": "/tmp/nodepool-scripts"
+        },
+        {
+            "type": "shell",
+            "inline": 
+            [
+                "mv /tmp/nodepool-scripts /opt/nodepool-scripts",
+                "chmod -R a+rx /opt/nodepool-scripts/"
+            ],
+            "execute_command": "echo 'packer' | {{ .Vars }} sudo -E -S sh '{{ .Path }}'"
+        },
+        {
+            "type": "shell",
+            "inline": ["cd /opt/nodepool-scripts && /opt/nodepool-scripts/prepare_node_{{user `node-type` }}.sh"],
+            "execute_command": "echo 'packer' | {{ .Vars }} sudo -E -S sh '{{ .Path }}'",
+            "environment_vars":
+            [
+                "NODEPOOL_SSH_KEY={{user `publickey`}}"
+            ]
+        }
+    ]
+}
